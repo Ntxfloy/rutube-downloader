@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Данные приложения (не загружаем пользовательские данные)
+data/downloads/
+data/history.json
+data/config.json
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.temp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Скачанные видео (не загружаем на GitHub)
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+
+# Субтитры
+*.srt
+*.vtt
+*.ass
+
+# Превью
+*.jpg
+*.jpeg
+*.png
+*.gif
+
+# Архивы
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# Кэш
+.cache/
+*.cache
