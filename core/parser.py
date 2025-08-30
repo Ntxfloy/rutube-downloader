@@ -18,6 +18,8 @@ class RutubeParser:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
+        # Кеш для плейлистов
+        self.playlist_cache = {}
     
     def parse_url(self, url: str) -> Dict:
         """
@@ -126,6 +128,12 @@ class RutubeParser:
     def _parse_playlist(self, url: str) -> Dict:
         """Парсит информацию о плейлисте"""
         try:
+            # Проверяем кеш
+            if url in self.playlist_cache:
+                print(f"DEBUG: Используем кешированный плейлист: {url}")
+                return self.playlist_cache[url]
+            
+            print(f"DEBUG: Парсим плейлист (не в кеше): {url}")
             response = self.session.get(url, timeout=10)
             response.raise_for_status()
             
@@ -143,14 +151,25 @@ class RutubeParser:
             episodes = self._count_episodes(soup)
             print(f"DEBUG: Найдено серий в плейлисте: {episodes}")
             
-            return {
+            # Извлекаем URL отдельных серий
+            episode_urls = self._extract_episode_urls(soup, url)
+            print(f"DEBUG: Извлечено URL отдельных серий: {len(episode_urls)}")
+            
+            # Создаем результат
+            result = {
                 "type": "playlist",
-                "url": url,
+                "url": url,  # Добавляем URL плейлиста
                 "title": title,
                 "description": description,
                 "episodes": episodes,
-                "episode_urls": self._extract_episode_urls(soup, url)
+                "episode_urls": episode_urls
             }
+            
+            # Кешируем результат
+            self.playlist_cache[url] = result
+            print(f"DEBUG: Плейлист добавлен в кеш: {url}")
+            
+            return result
             
         except Exception as e:
             return {"error": f"Ошибка при парсинге плейлиста: {str(e)}"}
@@ -232,9 +251,34 @@ class RutubeParser:
                     
                     episode_urls.append(full_url)
             
-            return episode_urls[:10]  # Ограничиваем первыми 10 сериями
+            # Если не нашли достаточно URL, пытаемся извлечь из JavaScript
+            if len(episode_urls) < 50:  # Если меньше 50 серий
+                print(f"DEBUG: Найдено только {len(episode_urls)} URL серий, ищу в JavaScript...")
+                
+                # Ищем скрипты с данными о сериях
+                scripts = soup.find_all('script')
+                for script in scripts:
+                    if script.string:
+                        script_text = script.string
+                        # Ищем JSON с данными о сериях
+                        if 'playlist' in script_text.lower() or 'episodes' in script_text.lower():
+                            print(f"DEBUG: Найден скрипт с данными о сериях")
+                            # Пытаемся извлечь URL из JSON
+                            try:
+                                # Ищем URL серий в тексте скрипта
+                                video_matches = re.findall(r'https?://[^\s"\']*?/video/[^\s"\']*', script_text)
+                                for match in video_matches:
+                                    if match not in episode_urls:
+                                        episode_urls.append(match)
+                                        print(f"DEBUG: Добавлен URL из скрипта: {match}")
+                            except Exception as e:
+                                print(f"DEBUG: Ошибка при парсинге скрипта: {e}")
             
-        except Exception:
+            print(f"DEBUG: Итого найдено URL серий: {len(episode_urls)}")
+            return episode_urls
+            
+        except Exception as e:
+            print(f"DEBUG: Ошибка при извлечении URL серий: {e}")
             return []
     
     def close(self):

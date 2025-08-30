@@ -191,27 +191,37 @@ class MainWindow:
             # Получаем текущий фокус
             focused_widget = self.root.focus_get()
             
+            # Проверяем, что виджет существует и готов
+            if focused_widget is None:
+                return None
+                
             # Если фокус на текстовом поле, вставляем туда
-            if hasattr(focused_widget, 'insert'):
-                clipboard_text = self.root.clipboard_get()
-                if clipboard_text:
-                    # Очищаем поле и вставляем текст
-                    focused_widget.delete(0, tk.END)
-                    focused_widget.insert(0, clipboard_text.strip())
-                    return "break"  # Предотвращаем стандартную обработку
+            if hasattr(focused_widget, 'insert') and hasattr(focused_widget, 'delete'):
+                try:
+                    clipboard_text = self.root.clipboard_get()
+                    if clipboard_text:
+                        # Очищаем поле и вставляем текст
+                        focused_widget.delete(0, tk.END)
+                        focused_widget.insert(0, clipboard_text.strip())
+                        return "break"  # Предотвращаем стандартную обработку
+                except Exception as e:
+                    print(f"Ошибка при вставке в текстовое поле: {e}")
             
             # Если фокус на Entry с textvariable, обновляем переменную
             elif hasattr(focused_widget, 'configure'):
-                config = focused_widget.configure()
-                if 'textvariable' in config:
-                    textvar_name = config['textvariable'][4]  # Получаем имя переменной
-                    if textvar_name:
-                        textvar = self.root.nametowidget(textvar_name)
-                        if textvar:
-                            clipboard_text = self.root.clipboard_get()
-                            if clipboard_text:
-                                textvar.set(clipboard_text.strip())
-                                return "break"
+                try:
+                    config = focused_widget.configure()
+                    if 'textvariable' in config and len(config['textvariable']) > 4:
+                        textvar_name = config['textvariable'][4]  # Получаем имя переменной
+                        if textvar_name:
+                            textvar = self.root.nametowidget(textvar_name)
+                            if textvar:
+                                clipboard_text = self.root.clipboard_get()
+                                if clipboard_text:
+                                    textvar.set(clipboard_text.strip())
+                                    return "break"
+                except Exception as e:
+                    print(f"Ошибка при обновлении textvariable: {e}")
         except Exception as e:
             print(f"Ошибка при глобальной вставке: {e}")
         
