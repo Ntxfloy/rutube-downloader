@@ -28,7 +28,7 @@ git commit -m "Initial commit: Rutube Downloader v1.0
 - Темная тема интерфейса
 - История скачиваний
 - Многопоточность
-- Следование принципам SOSAL"
+- Оптимизированная производительность"
 ```
 
 ### 4. Добавление удаленного репозитория
@@ -67,8 +67,7 @@ Rutub_downloader/
 │   └── downloads/          # Скачивания
 ├── requirements.txt         # 📦 Зависимости
 ├── README.md               # 📚 Документация
-├── QUICK_START.md          # 🚀 Быстрый старт
-├── PROJECT_SUMMARY.md      # 📋 Сводка проекта
+├── project_plan.md         # 📋 План проекта
 └── GITHUB_UPLOAD.md        # 📤 Эта инструкция
 ```
 
