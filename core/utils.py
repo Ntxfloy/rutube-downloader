@@ -18,10 +18,21 @@ class ConfigManager:
         self.config = self._load_default_config()
         self._load_config()
     
+    def _get_default_download_path(self) -> str:
+        """Возвращает стандартный путь для скачивания (папка Загрузки/RutubeDownloads)"""
+        try:
+            home = Path.home()
+            downloads = home / "Downloads"
+            if downloads.exists():
+                return str(downloads / "RutubeDownloads")
+            return str(home / "RutubeDownloads")
+        except Exception:
+            return str(Path.cwd() / "downloads")
+            
     def _load_default_config(self) -> Dict:
         """Загружает конфигурацию по умолчанию"""
         return {
-            "download_path": "E:\\anime",
+            "download_path": self._get_default_download_path(),
             "default_quality": "best",
             "max_concurrent_downloads": 1,
             "auto_start_download": False,
@@ -61,11 +72,36 @@ class ConfigManager:
         self.save_config()
     
     def get_download_path(self) -> str:
-        """Получает путь для скачивания"""
-        return self.config.get("download_path", "E:\\anime")
+        """Получает путь для скачивания, проверяя его доступность"""
+        path = self.config.get("download_path")
+        if not path:
+            path = self._get_default_download_path()
+            try:
+                self.set_download_path(path)
+            except Exception:
+                self.config["download_path"] = path
+            return path
+            
+        try:
+            p = Path(path)
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"Предупреждение: Не удалось использовать путь {path} ({e}). Используем путь по умолчанию.")
+            default_path = self._get_default_download_path()
+            try:
+                self.set_download_path(default_path)
+            except Exception:
+                self.config["download_path"] = default_path
+            return default_path
+            
+        return path
     
     def set_download_path(self, path: str):
-        """Устанавливает путь для скачивания"""
+        """Устанавливает путь для скачивания с проверкой доступности"""
+        try:
+            Path(path).mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise ValueError(f"Не удалось создать директорию: {e}")
         self.config["download_path"] = path
         self.save_config()
 

@@ -42,7 +42,7 @@ class HistoryFrame:
         title_label.pack(pady=(0, 15))
         
         # Статистика
-        self.stats_frame = ttk.LabelFrame(main_container, text="Статистика", padding=10)
+        self.stats_frame = ttk.LabelFrame(main_container, text="Статистика", padx=10, pady=10)
         self.stats_frame.pack(fill=X, pady=(0, 15))
         
         self.stats_label = ttk.Label(
@@ -88,7 +88,7 @@ class HistoryFrame:
         search_entry.pack(side=LEFT, padx=(5, 0))
         
         # Таблица истории
-        history_frame = ttk.LabelFrame(main_container, text="Записи истории", padding=10)
+        history_frame = ttk.LabelFrame(main_container, text="Записи истории", padx=10, pady=10)
         history_frame.pack(fill=BOTH, expand=True)
         
         # Создаем Treeview для истории

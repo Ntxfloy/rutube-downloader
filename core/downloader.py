@@ -5,6 +5,7 @@
 
 import os
 import json
+import shutil
 import threading
 import time
 from datetime import datetime
@@ -13,12 +14,47 @@ from pathlib import Path
 import yt_dlp
 
 
+def find_ffmpeg() -> Optional[str]:
+    """Ищет ffmpeg в PATH и рядом с исполняемым файлом.
+    Возвращает путь к папке с ffmpeg или None если не найден."""
+    # Проверяем стандартный PATH
+    if shutil.which("ffmpeg"):
+        ffmpeg_path = shutil.which("ffmpeg")
+        return str(Path(ffmpeg_path).parent)
+    # Проверяем рядом с текущим скриптом
+    local_ffmpeg = Path(__file__).parent.parent / "ffmpeg" / "ffmpeg.exe"
+    if local_ffmpeg.exists():
+        return str(local_ffmpeg.parent)
+    return None
+
+
 class RutubeDownloader:
     """Класс для скачивания видео с Rutube"""
     
-    def __init__(self, download_path: str = "E:\\anime"):
+    def __init__(self, download_path: str = None, ffmpeg_location: str = None):
+        if not download_path:
+            try:
+                home = Path.home()
+                downloads = home / "Downloads"
+                if downloads.exists():
+                    download_path = str(downloads / "RutubeDownloads")
+                else:
+                    download_path = str(home / "RutubeDownloads")
+            except Exception:
+                download_path = "downloads"
+
         self.download_path = Path(download_path)
-        self.download_path.mkdir(parents=True, exist_ok=True)
+        try:
+            self.download_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"Предупреждение: Не удалось создать директорию {download_path}: {e}. Используем резервный путь.")
+            try:
+                fallback_path = Path.cwd() / "downloads"
+                fallback_path.mkdir(parents=True, exist_ok=True)
+                self.download_path = fallback_path
+            except Exception:
+                self.download_path = Path.cwd()
+
         self.download_queue = []
         self.is_downloading = False
         self.current_download = None
@@ -26,6 +62,16 @@ class RutubeDownloader:
         self.max_concurrent_downloads = 3   # Оптимально 3 одновременных загрузки
         self.active_downloads = 0  # Счетчик активных загрузок
         self.download_lock = threading.Lock()  # Блокировка для синхронизации
+
+        # Определяем путь к ffmpeg
+        if ffmpeg_location:
+            self.ffmpeg_location = ffmpeg_location
+        else:
+            self.ffmpeg_location = find_ffmpeg()
+        if self.ffmpeg_location:
+            print(f"DEBUG: ffmpeg найден: {self.ffmpeg_location}")
+        else:
+            print("DEBUG: ffmpeg не найден — постобработка метаданных отключена.")
         
     def set_progress_callback(self, callback: Callable):
         """Устанавливает callback для отслеживания прогресса"""
@@ -177,11 +223,15 @@ class RutubeDownloader:
             'ignoreerrors': True,
             'no_warnings': True,
             'progress_hooks': [self._progress_hook],
-            'postprocessors': [{
+        }
+
+        # Добавляем ffmpeg только если он найден
+        if self.ffmpeg_location:
+            ydl_opts['ffmpeg_location'] = self.ffmpeg_location
+            ydl_opts['postprocessors'] = [{
                 'key': 'FFmpegMetadata',
                 'add_metadata': True,
-            }],
-        }
+            }]
         
         # Если это серия из плейлиста, используем специальные параметры
         if task.get("type") == "playlist_episode":
@@ -272,7 +322,10 @@ class RutubeDownloader:
         return str(self.download_path)
     
     def set_download_path(self, path: str):
-        """Устанавливает новый путь для скачивания"""
+        """Устанавливает новый путь для скачивания с проверкой доступности"""
         new_path = Path(path)
-        new_path.mkdir(parents=True, exist_ok=True)
+        try:
+            new_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise ValueError(f"Не удалось создать директорию: {e}")
         self.download_path = new_path

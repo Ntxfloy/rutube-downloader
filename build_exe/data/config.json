@@ -1,0 +1,17 @@
+{
+  "download_path": "C:\\Users\\Ayder\\Downloads\\RutubeDownloads",
+  "default_quality": "best",
+  "max_concurrent_downloads": 1,
+  "auto_start_download": false,
+  "save_thumbnails": true,
+  "save_subtitles": true,
+  "theme": "dark",
+  "window_size": [
+    800,
+    600
+  ],
+  "window_position": [
+    100,
+    100
+  ]
+}

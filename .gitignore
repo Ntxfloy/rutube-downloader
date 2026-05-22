@@ -62,3 +62,9 @@ Thumbs.db
 # Кэш
 .cache/
 *.cache
+
+# PyInstaller build artifacts (временные файлы сборки)
+build_exe/build/
+build_exe/*.toc
+build_exe/*.pkg
+build_exe/*.pyz

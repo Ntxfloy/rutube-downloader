@@ -23,12 +23,12 @@ class MainWindow:
         self.root = ttk.Window(
             title="Rutube Downloader",
             themename="darkly",
-            size=(800, 600),
+            size=(900, 700),
             resizable=(True, True)
         )
         
         # Устанавливаем позицию окна
-        window_size = self.config.get("window_size", [800, 600])
+        window_size = self.config.get("window_size", [900, 700])
         window_position = self.config.get("window_position", [100, 100])
         
         self.root.geometry(f"{window_size[0]}x{window_size[1]}+{window_position[0]}+{window_position[1]}")
@@ -36,10 +36,6 @@ class MainWindow:
         # Привязываем события
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.root.bind("<Configure>", self.on_window_resize)
-        
-        # Добавляем глобальную поддержку Ctrl+V
-        self.root.bind('<Control-v>', self._global_paste)
-        self.root.bind('<Control-V>', self._global_paste)
         
         # Создаем интерфейс
         self._create_widgets()
@@ -185,47 +181,7 @@ class MainWindow:
         """Запускает главное окно"""
         self.root.mainloop()
     
-    def _global_paste(self, event):
-        """Глобальная вставка из буфера обмена"""
-        try:
-            # Получаем текущий фокус
-            focused_widget = self.root.focus_get()
-            
-            # Проверяем, что виджет существует и готов
-            if focused_widget is None:
-                return None
-                
-            # Если фокус на текстовом поле, вставляем туда
-            if hasattr(focused_widget, 'insert') and hasattr(focused_widget, 'delete'):
-                try:
-                    clipboard_text = self.root.clipboard_get()
-                    if clipboard_text:
-                        # Очищаем поле и вставляем текст
-                        focused_widget.delete(0, tk.END)
-                        focused_widget.insert(0, clipboard_text.strip())
-                        return "break"  # Предотвращаем стандартную обработку
-                except Exception as e:
-                    print(f"Ошибка при вставке в текстовое поле: {e}")
-            
-            # Если фокус на Entry с textvariable, обновляем переменную
-            elif hasattr(focused_widget, 'configure'):
-                try:
-                    config = focused_widget.configure()
-                    if 'textvariable' in config and len(config['textvariable']) > 4:
-                        textvar_name = config['textvariable'][4]  # Получаем имя переменной
-                        if textvar_name:
-                            textvar = self.root.nametowidget(textvar_name)
-                            if textvar:
-                                clipboard_text = self.root.clipboard_get()
-                                if clipboard_text:
-                                    textvar.set(clipboard_text.strip())
-                                    return "break"
-                except Exception as e:
-                    print(f"Ошибка при обновлении textvariable: {e}")
-        except Exception as e:
-            print(f"Ошибка при глобальной вставке: {e}")
-        
-        return None
+
 
 
 class SettingsWindow:
@@ -266,7 +222,7 @@ class SettingsWindow:
         title_label.pack(pady=(0, 20))
         
         # Путь для скачивания
-        path_frame = ttk.LabelFrame(main_frame, text="Путь для скачивания", padding=10)
+        path_frame = ttk.LabelFrame(main_frame, text="Путь для скачивания", padx=10, pady=10)
         path_frame.pack(fill=X, pady=(0, 15))
         
         self.path_var = tk.StringVar(value=self.config.get_download_path())
@@ -282,7 +238,7 @@ class SettingsWindow:
         browse_btn.pack(side=RIGHT)
         
         # Качество по умолчанию
-        quality_frame = ttk.LabelFrame(main_frame, text="Качество по умолчанию", padding=10)
+        quality_frame = ttk.LabelFrame(main_frame, text="Качество по умолчанию", padx=10, pady=10)
         quality_frame.pack(fill=X, pady=(0, 15))
         
         self.quality_var = tk.StringVar(value=self.config.get("default_quality", "best"))
@@ -296,7 +252,7 @@ class SettingsWindow:
         quality_combo.pack()
         
         # Дополнительные настройки
-        options_frame = ttk.LabelFrame(main_frame, text="Дополнительные настройки", padding=10)
+        options_frame = ttk.LabelFrame(main_frame, text="Дополнительные настройки", padx=10, pady=10)
         options_frame.pack(fill=X, pady=(0, 20))
         
         self.save_thumbnails_var = tk.BooleanVar(value=self.config.get("save_thumbnails", True))

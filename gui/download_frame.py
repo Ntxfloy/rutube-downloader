@@ -21,14 +21,16 @@ class DownloadFrame:
         self.parent = parent
         self.config = config
         self.parser = RutubeParser()
-        self.downloader = RutubeDownloader(config.get_download_path())
+        self.downloader = RutubeDownloader(
+            download_path=config.get_download_path(),
+            ffmpeg_location=config.get("ffmpeg_location", None)
+        )
         self.history_manager = HistoryManager()
         
         # Переменные
         self.content_info = None
         self.is_analyzing = False
         
-        # Создаем фрейм
         self.frame = ttk.Frame(parent)
         self._create_widgets()
         
@@ -37,12 +39,14 @@ class DownloadFrame:
     
     def _create_widgets(self):
         """Создает виджеты фрейма"""
-        # Главный контейнер
-        main_container = ttk.Frame(self.frame)
-        main_container.pack(fill=BOTH, expand=True, padx=10, pady=10)
+        # Scrolled-контейнер чтобы весь контент был доступен без полноэкранного режима
+        from ttkbootstrap.scrolled import ScrolledFrame
+        scrolled = ScrolledFrame(self.frame, autohide=True)
+        scrolled.pack(fill=BOTH, expand=True)
+        main_container = scrolled
         
         # Секция ввода URL
-        url_frame = ttk.LabelFrame(main_container, text="Ссылка на видео или плейлист", padding=15)
+        url_frame = ttk.LabelFrame(main_container, text="Ссылка на видео или плейлист", padx=15, pady=15)
         url_frame.pack(fill=X, pady=(0, 15))
         
         # Поле ввода URL
@@ -55,9 +59,9 @@ class DownloadFrame:
         )
         url_entry.pack(fill=X, pady=(0, 10))
         
-        # Добавляем поддержку Ctrl+V и контекстного меню
-        url_entry.bind('<Control-v>', self._paste_from_clipboard)
+        # Контекстное меню (правая кнопка)
         url_entry.bind('<Button-3>', self._show_context_menu)
+        # Ctrl+V работает нативно для ttk.Entry — дополнительных биндов не нужно
         
         # Создаем контекстное меню
         self.context_menu = tk.Menu(url_entry, tearoff=0)
@@ -88,7 +92,7 @@ class DownloadFrame:
         self.clear_btn.pack(side=LEFT)
         
         # Секция информации о контенте
-        self.info_frame = ttk.LabelFrame(main_container, text="Информация о контенте", padding=15)
+        self.info_frame = ttk.LabelFrame(main_container, text="Информация о контенте", padx=15, pady=15)
         self.info_frame.pack(fill=X, pady=(0, 15))
         
         # Заголовок
@@ -118,7 +122,7 @@ class DownloadFrame:
         self.details_label.pack()
         
         # Секция настроек скачивания
-        self.settings_frame = ttk.LabelFrame(main_container, text="Настройки скачивания", padding=15)
+        self.settings_frame = ttk.LabelFrame(main_container, text="Настройки скачивания", padx=15, pady=15)
         self.settings_frame.pack(fill=X, pady=(0, 15))
         
         # Качество видео
@@ -206,7 +210,7 @@ class DownloadFrame:
         self.download_btn.pack(pady=(10, 0))
         
         # Секция прогресса
-        self.progress_frame = ttk.LabelFrame(main_container, text="Прогресс скачивания", padding=15)
+        self.progress_frame = ttk.LabelFrame(main_container, text="Прогресс скачивания", padx=15, pady=15)
         self.progress_frame.pack(fill=X, pady=(0, 15))
         
         # Прогресс бар
