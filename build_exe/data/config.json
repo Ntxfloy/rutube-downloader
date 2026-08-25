@@ -5,13 +5,15 @@
   "auto_start_download": false,
   "save_thumbnails": true,
   "save_subtitles": true,
-  "theme": "dark",
+  "show_success_popups": false,
+  "theme": "darkly",
   "window_size": [
-    800,
-    600
+    980,
+    720
   ],
   "window_position": [
     100,
     100
-  ]
+  ],
+  "ffmpeg_location": null
 }
