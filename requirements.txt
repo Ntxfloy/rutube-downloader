@@ -1,5 +1,8 @@
 yt-dlp>=2023.12.30
 requests>=2.31.0
 beautifulsoup4>=4.12.0
-ttkbootstrap>=1.10.1
+# Версия 2.x убрала модуль ttkbootstrap.scrolled и меняет часть API,
+# поэтому держимся ветки 1.x (совместимость с 2.x всё равно обеспечена
+# через gui/ui_compat.py).
+ttkbootstrap>=1.10.1,<2
 lxml>=4.9.0

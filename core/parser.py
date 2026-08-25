@@ -1,286 +1,282 @@
 """
-Модуль для парсинга страниц Rutube
+Модуль для анализа ссылок Rutube
 Определяет тип контента (видео/плейлист) и извлекает метаданные
+
+Основной источник информации — yt-dlp (тот же движок, что качает видео),
+поэтому список серий и их количество совпадают с реальностью.
+HTML-парсинг оставлен как фолбэк.
 """
 
+from __future__ import annotations
+
 import re
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin, urlparse
+
 import requests
 from bs4 import BeautifulSoup
-from typing import Dict, Optional, Tuple, List
-from urllib.parse import urlparse, parse_qs
+
+try:
+    import yt_dlp
+except Exception:  # pragma: no cover
+    yt_dlp = None  # type: ignore[assignment]
+
+try:
+    from .utils import ValidationUtils, format_duration
+except ImportError:  # pragma: no cover - запуск без пакета
+    from core.utils import ValidationUtils, format_duration
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+REQUEST_TIMEOUT = 15
+MAX_PLAYLIST_ITEMS = 1000
 
 
 class RutubeParser:
     """Парсер для страниц Rutube"""
-    
-    def __init__(self):
+
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            "User-Agent": USER_AGENT,
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
         })
-        # Кеш для плейлистов
-        self.playlist_cache = {}
-    
-    def parse_url(self, url: str) -> Dict:
-        """
-        Анализирует URL и возвращает информацию о контенте
-        
-        Args:
-            url: URL для анализа
-            
-        Returns:
-            Dict с информацией о контенте
-        """
+        self.playlist_cache: Dict[str, Dict[str, Any]] = {}
+
+    # ----------------------------------------------------------------- utils
+    def _log(self, message: str) -> None:
+        if self.verbose:
+            print(f"[parser] {message}")
+
+    @staticmethod
+    def _dedupe(items: List[str]) -> List[str]:
+        """Убирает дубликаты, сохраняя порядок."""
+        seen = set()
+        result = []
+        for item in items:
+            if item and item not in seen:
+                seen.add(item)
+                result.append(item)
+        return result
+
+    # ------------------------------------------------------------------ API
+    def parse_url(self, url: str) -> Dict[str, Any]:
+        """Анализирует ссылку и возвращает информацию о контенте."""
         try:
-            # Очищаем URL
-            url = url.strip()
-            
-            # Определяем тип контента
+            url = ValidationUtils.normalize_url(url)
+            if not url:
+                return {"error": "Пустая ссылка"}
+            if not ValidationUtils.is_valid_url(url):
+                return {"error": "Ссылка должна вести на rutube.ru"}
+
+            if url in self.playlist_cache:
+                self._log(f"из кеша: {url}")
+                return self.playlist_cache[url]
+
+            info = self._parse_with_ytdlp(url)
+            if info and "error" not in info:
+                if info.get("type") == "playlist":
+                    self.playlist_cache[url] = info
+                return info
+
+            # Фолбэк: разбор HTML-страницы
             content_type = self._detect_content_type(url)
-            
-            if content_type == "video":
-                return self._parse_video(url)
-            elif content_type == "playlist":
-                return self._parse_playlist(url)
-            else:
-                return {"error": "Неизвестный тип контента"}
-                
-        except Exception as e:
-            return {"error": f"Ошибка при парсинге: {str(e)}"}
-    
+            if content_type == "playlist":
+                result = self._parse_playlist(url)
+                if "error" not in result:
+                    self.playlist_cache[url] = result
+                return result
+            return self._parse_video(url)
+
+        except Exception as error:
+            return {"error": f"Ошибка при парсинге: {error}"}
+
+    def clear_cache(self) -> None:
+        self.playlist_cache.clear()
+
+    # ------------------------------------------------------------- yt-dlp
+    def _parse_with_ytdlp(self, url: str) -> Optional[Dict[str, Any]]:
+        """Получает информацию через yt-dlp без скачивания."""
+        if yt_dlp is None:
+            return None
+
+        options = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": "in_playlist",
+            "playlistend": MAX_PLAYLIST_ITEMS,
+            "socket_timeout": REQUEST_TIMEOUT,
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(options) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as error:
+            self._log(f"yt-dlp не смог разобрать ссылку: {error}")
+            return None
+
+        if not isinstance(info, dict):
+            return None
+
+        entries = [entry for entry in (info.get("entries") or []) if isinstance(entry, dict)]
+
+        if entries:
+            episode_urls: List[str] = []
+            for entry in entries:
+                entry_url = entry.get("url") or entry.get("webpage_url")
+                if not entry_url:
+                    entry_id = entry.get("id")
+                    if entry_id:
+                        entry_url = f"https://rutube.ru/video/{entry_id}/"
+                if entry_url:
+                    episode_urls.append(ValidationUtils.normalize_url(entry_url))
+
+            episode_urls = self._dedupe(episode_urls)
+            return {
+                "type": "playlist",
+                "url": url,
+                "title": info.get("title") or "Неизвестный плейлист",
+                "description": (info.get("description") or "")[:1000],
+                "episodes": len(episode_urls) or len(entries),
+                "episode_urls": episode_urls,
+                "source": "yt-dlp",
+            }
+
+        if info.get("id") or info.get("title"):
+            return {
+                "type": "video",
+                "url": info.get("webpage_url") or url,
+                "title": info.get("title") or "Неизвестное видео",
+                "description": (info.get("description") or "")[:1000],
+                "duration": format_duration(info.get("duration")),
+                "episodes": 1,
+                "source": "yt-dlp",
+            }
+
+        return None
+
+    # --------------------------------------------------------------- HTML
     def _detect_content_type(self, url: str) -> str:
-        """Определяет тип контента по URL"""
-        parsed = urlparse(url)
-        
-        # Проверяем паттерны URL
-        if '/video/' in url:
+        """Определяет тип контента по URL."""
+        path = (urlparse(url).path or "").lower()
+        if "/video/" in path or "/shorts/" in path:
             return "video"
-        elif '/playlist/' in url or '/rubric/' in url:
+        if any(marker in path for marker in ("/plst/", "/playlist/", "/rubric/", "/channel/", "/metainfo/")):
             return "playlist"
-        elif '/channel/' in url:
-            return "playlist"
-        else:
-            # Пытаемся определить по содержимому страницы
-            return self._detect_by_content(url)
-    
-    def _detect_by_content(self, url: str) -> str:
-        """Определяет тип контента по содержимому страницы"""
+        return "video"
+
+    def _get_soup(self, url: str) -> BeautifulSoup:
+        response = self.session.get(url, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        return BeautifulSoup(response.content, "html.parser")
+
+    @staticmethod
+    def _meta(soup: BeautifulSoup, prop: str, default: str = "") -> str:
+        tag = soup.find("meta", property=prop)
+        if tag and tag.get("content"):
+            return str(tag["content"]).strip()
+        tag = soup.find("meta", attrs={"name": prop})
+        if tag and tag.get("content"):
+            return str(tag["content"]).strip()
+        return default
+
+    def _parse_video(self, url: str) -> Dict[str, Any]:
+        """Парсит информацию о видео из HTML."""
         try:
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Ищем признаки плейлиста
-            playlist_indicators = [
-                'playlist',
-                'плейлист',
-                'серия',
-                'сезон',
-                'эпизод'
-            ]
-            
-            page_text = soup.get_text().lower()
-            for indicator in playlist_indicators:
-                if indicator in page_text:
-                    return "playlist"
-            
-            # Если не плейлист, то видео
-            return "video"
-            
-        except Exception:
-            return "video"  # По умолчанию считаем видео
-    
-    def _parse_video(self, url: str) -> Dict:
-        """Парсит информацию о видео"""
-        try:
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Извлекаем заголовок
-            title = soup.find('meta', property='og:title')
-            title = title['content'] if title else "Неизвестное видео"
-            
-            # Извлекаем описание
-            description = soup.find('meta', property='og:description')
-            description = description['content'] if description else ""
-            
-            # Извлекаем длительность (если доступно)
-            duration = "Неизвестно"
-            duration_elem = soup.find('meta', property='video:duration')
-            if duration_elem:
-                duration = duration_elem['content']
-            
+            soup = self._get_soup(url)
+            duration_raw = self._meta(soup, "video:duration")
             return {
                 "type": "video",
                 "url": url,
-                "title": title,
-                "description": description,
-                "duration": duration,
-                "episodes": 1
+                "title": self._meta(soup, "og:title", "Неизвестное видео"),
+                "description": self._meta(soup, "og:description")[:1000],
+                "duration": format_duration(duration_raw) if duration_raw else "Неизвестно",
+                "episodes": 1,
+                "source": "html",
             }
-            
-        except Exception as e:
-            return {"error": f"Ошибка при парсинге видео: {str(e)}"}
-    
-    def _parse_playlist(self, url: str) -> Dict:
-        """Парсит информацию о плейлисте"""
+        except Exception as error:
+            return {"error": f"Ошибка при парсинге видео: {error}"}
+
+    def _parse_playlist(self, url: str) -> Dict[str, Any]:
+        """Парсит информацию о плейлисте из HTML."""
         try:
-            # Проверяем кеш
-            if url in self.playlist_cache:
-                print(f"DEBUG: Используем кешированный плейлист: {url}")
-                return self.playlist_cache[url]
-            
-            print(f"DEBUG: Парсим плейлист (не в кеше): {url}")
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Извлекаем заголовок плейлиста
-            title = soup.find('meta', property='og:title')
-            title = title['content'] if title else "Неизвестный плейлист"
-            
-            # Извлекаем описание
-            description = soup.find('meta', property='og:description')
-            description = description['content'] if description else ""
-            
-            # Пытаемся найти количество серий
-            episodes = self._count_episodes(soup)
-            print(f"DEBUG: Найдено серий в плейлисте: {episodes}")
-            
-            # Извлекаем URL отдельных серий
+            soup = self._get_soup(url)
             episode_urls = self._extract_episode_urls(soup, url)
-            print(f"DEBUG: Извлечено URL отдельных серий: {len(episode_urls)}")
-            
-            # Создаем результат
-            result = {
+            episodes = len(episode_urls) or self._count_episodes(soup)
+
+            return {
                 "type": "playlist",
-                "url": url,  # Добавляем URL плейлиста
-                "title": title,
-                "description": description,
-                "episodes": episodes,
-                "episode_urls": episode_urls
+                "url": url,
+                "title": self._meta(soup, "og:title", "Неизвестный плейлист"),
+                "description": self._meta(soup, "og:description")[:1000],
+                "episodes": max(1, episodes),
+                "episode_urls": episode_urls,
+                "source": "html",
             }
-            
-            # Кешируем результат
-            self.playlist_cache[url] = result
-            print(f"DEBUG: Плейлист добавлен в кеш: {url}")
-            
-            return result
-            
-        except Exception as e:
-            return {"error": f"Ошибка при парсинге плейлиста: {str(e)}"}
-    
+        except Exception as error:
+            return {"error": f"Ошибка при парсинге плейлиста: {error}"}
+
     def _count_episodes(self, soup: BeautifulSoup) -> int:
-        """Подсчитывает количество серий в плейлисте"""
+        """Оценивает количество серий в плейлисте.
+
+        Раньше здесь была эвристика "взять максимальное число от 10 до 1000
+        со страницы", которая ловила лайки, просмотры и года выпуска.
+        """
         try:
-            # Ищем различные паттерны для подсчета серий
-            episode_patterns = [
-                r'(\d+)\s*серия',
-                r'(\d+)\s*эпизод',
-                r'серия\s*(\d+)',
-                r'эпизод\s*(\d+)',
-                r'(\d+)\s*из\s*(\d+)'
-            ]
-            
-            page_text = soup.get_text()
-            
-            # Специальная обработка для Rutube плейлистов
-            # Ищем текст типа "396 видео" или "396 серий"
-            rutube_patterns = [
-                r'(\d+)\s*видео',
-                r'(\d+)\s*серий',
-                r'(\d+)\s*эпизодов'
-            ]
-            
-            for pattern in rutube_patterns:
-                matches = re.findall(pattern, page_text, re.IGNORECASE)
-                if matches:
-                    return int(matches[0])
-            
-            # Обычные паттерны
-            for pattern in episode_patterns:
-                matches = re.findall(pattern, page_text, re.IGNORECASE)
-                if matches:
-                    if len(matches[0]) == 2:  # формат "X из Y"
-                        return int(matches[0][1])
-                    else:
-                        # Берем максимальное число
-                        numbers = [int(match) for match in matches if match.isdigit()]
-                        if numbers:
-                            return max(numbers)
-            
-            # Если не удалось найти по паттернам, ищем по структуре страницы
-            episode_links = soup.find_all('a', href=re.compile(r'/video/'))
-            if episode_links:
-                return len(episode_links)
-            
-            # Дополнительная проверка для Rutube
-            # Ищем любые числа в тексте, которые могут быть количеством серий
-            all_numbers = re.findall(r'\b(\d+)\b', page_text)
-            if all_numbers:
-                numbers = [int(num) for num in all_numbers if 10 <= int(num) <= 1000]
-                if numbers:
-                    return max(numbers)
-            
-            return 1  # По умолчанию 1 серия
-            
+            links = soup.find_all("a", href=re.compile(r"/video/"))
+            if links:
+                return len({link.get("href") for link in links if link.get("href")})
+
+            page_text = soup.get_text(" ", strip=True)
+            patterns = (
+                r"(\d{1,4})\s*видео",
+                r"(\d{1,4})\s*серий",
+                r"(\d{1,4})\s*эпизодов",
+            )
+            for pattern in patterns:
+                match = re.search(pattern, page_text, re.IGNORECASE)
+                if match:
+                    return int(match.group(1))
+            return 1
         except Exception:
             return 1
-    
+
     def _extract_episode_urls(self, soup: BeautifulSoup, base_url: str) -> List[str]:
-        """Извлекает ссылки на отдельные серии"""
+        """Извлекает ссылки на отдельные серии."""
+        episode_urls: List[str] = []
         try:
-            episode_urls = []
-            
-            # Ищем ссылки на видео
-            video_links = soup.find_all('a', href=re.compile(r'/video/'))
-            
-            for link in video_links:
-                href = link.get('href')
-                if href:
-                    if href.startswith('/'):
-                        full_url = f"https://rutube.ru{href}"
-                    elif href.startswith('http'):
-                        full_url = href
-                    else:
-                        full_url = f"{base_url.rstrip('/')}/{href.lstrip('/')}"
-                    
-                    episode_urls.append(full_url)
-            
-            # Если не нашли достаточно URL, пытаемся извлечь из JavaScript
-            if len(episode_urls) < 50:  # Если меньше 50 серий
-                print(f"DEBUG: Найдено только {len(episode_urls)} URL серий, ищу в JavaScript...")
-                
-                # Ищем скрипты с данными о сериях
-                scripts = soup.find_all('script')
-                for script in scripts:
-                    if script.string:
-                        script_text = script.string
-                        # Ищем JSON с данными о сериях
-                        if 'playlist' in script_text.lower() or 'episodes' in script_text.lower():
-                            print(f"DEBUG: Найден скрипт с данными о сериях")
-                            # Пытаемся извлечь URL из JSON
-                            try:
-                                # Ищем URL серий в тексте скрипта
-                                video_matches = re.findall(r'https?://[^\s"\']*?/video/[^\s"\']*', script_text)
-                                for match in video_matches:
-                                    if match not in episode_urls:
-                                        episode_urls.append(match)
-                                        print(f"DEBUG: Добавлен URL из скрипта: {match}")
-                            except Exception as e:
-                                print(f"DEBUG: Ошибка при парсинге скрипта: {e}")
-            
-            print(f"DEBUG: Итого найдено URL серий: {len(episode_urls)}")
+            for link in soup.find_all("a", href=re.compile(r"/video/")):
+                href = link.get("href")
+                if not href:
+                    continue
+                # Было: f"{{https://rutube.ru{href}}}" — ссылка получалась в фигурных
+                # скобках и была невалидной для yt-dlp.
+                episode_urls.append(urljoin(base_url, href))
+
+            # Дополнительно ищем ссылки в инлайн-скриптах (SPA-разметка)
+            for script in soup.find_all("script"):
+                text = script.string or script.get_text() or ""
+                if not text or ("playlist" not in text.lower() and "video" not in text.lower()):
+                    continue
+                for video_id in re.findall(r'"/video/([0-9a-f]{16,})/?"', text):
+                    episode_urls.append(f"https://rutube.ru/video/{video_id}/")
+                for direct in re.findall(r'https?://rutube\.ru/video/[0-9a-f]{16,}/?', text):
+                    episode_urls.append(direct)
+
+            episode_urls = self._dedupe(episode_urls)
+            self._log(f"найдено URL серий: {len(episode_urls)}")
             return episode_urls
-            
-        except Exception as e:
-            print(f"DEBUG: Ошибка при извлечении URL серий: {e}")
-            return []
-    
-    def close(self):
-        """Закрывает сессию"""
-        self.session.close()
+        except Exception as error:
+            self._log(f"ошибка при извлечении URL серий: {error}")
+            return episode_urls
+
+    def close(self) -> None:
+        """Закрывает сетевую сессию."""
+        try:
+            self.session.close()
+        except Exception:
+            pass
