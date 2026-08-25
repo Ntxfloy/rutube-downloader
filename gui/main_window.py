@@ -8,10 +8,11 @@ from tkinter import filedialog, messagebox
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
-from core.utils import ConfigManager, HistoryManager
+from core.utils import DEFAULT_THEME, ConfigManager, HistoryManager
 
 from .download_frame import DownloadFrame
 from .history_frame import HistoryFrame
+from .ui_compat import label_frame, resolve_theme
 
 REPO_URL = "https://github.com/Ntxfloy/rutube-downloader"
 GEOMETRY_SAVE_DELAY_MS = 600
@@ -28,11 +29,27 @@ class MainWindow:
         window_size = self.config.get("window_size", [980, 720]) or [980, 720]
         window_position = self.config.get("window_position", [100, 100]) or [100, 100]
 
-        self.root = ttk.Window(
-            title="Rutube Downloader",
-            themename=self.config.get("theme", "darkly"),
-            resizable=(True, True),
-        )
+        # С невалидным именем темы (например, "dark") приложение раньше падало
+        # с критической ошибкой ('dark', 'is not a valid theme.') до появления окна.
+        theme_name = resolve_theme(self.config.get("theme", DEFAULT_THEME))
+        if theme_name != self.config.get("theme"):
+            self.config.set("theme", theme_name)
+
+        try:
+            self.root = ttk.Window(
+                title="Rutube Downloader",
+                themename=theme_name,
+                resizable=(True, True),
+            )
+        except Exception as error:
+            print(f"Тема '{theme_name}' недоступна ({error}), использую '{DEFAULT_THEME}'")
+            self.config.set("theme", DEFAULT_THEME)
+            self.root = ttk.Window(
+                title="Rutube Downloader",
+                themename=DEFAULT_THEME,
+                resizable=(True, True),
+            )
+
         self.root.minsize(760, 560)
 
         try:
@@ -273,7 +290,7 @@ class SettingsWindow:
 
         ttk.Label(main_frame, text="Настройки", font=("Helvetica", 16, "bold")).pack(pady=(0, 20))
 
-        path_frame = ttk.LabelFrame(main_frame, text="Путь для скачивания", padding=10)
+        path_frame = label_frame(main_frame, "Путь для скачивания", 10)
         path_frame.pack(fill=X, pady=(0, 12))
 
         self.path_var = tk.StringVar(value=self.config.get_download_path())
@@ -284,7 +301,7 @@ class SettingsWindow:
             path_frame, text="Обзор", command=self.browse_path, bootstyle="outline-secondary"
         ).pack(side=RIGHT)
 
-        quality_frame = ttk.LabelFrame(main_frame, text="Качество по умолчанию", padding=10)
+        quality_frame = label_frame(main_frame, "Качество по умолчанию", 10)
         quality_frame.pack(fill=X, pady=(0, 12))
 
         self.quality_var = tk.StringVar(value=self.config.get("default_quality", "best"))
@@ -296,7 +313,7 @@ class SettingsWindow:
             width=20,
         ).pack(anchor=W)
 
-        ffmpeg_frame = ttk.LabelFrame(main_frame, text="Папка с ffmpeg (необязательно)", padding=10)
+        ffmpeg_frame = label_frame(main_frame, "Папка с ffmpeg (необязательно)", 10)
         ffmpeg_frame.pack(fill=X, pady=(0, 12))
 
         self.ffmpeg_var = tk.StringVar(value=self.config.get("ffmpeg_location") or "")
@@ -310,7 +327,7 @@ class SettingsWindow:
             bootstyle="outline-secondary",
         ).pack(side=RIGHT)
 
-        options_frame = ttk.LabelFrame(main_frame, text="Дополнительные настройки", padding=10)
+        options_frame = label_frame(main_frame, "Дополнительные настройки", 10)
         options_frame.pack(fill=X, pady=(0, 12))
 
         concurrent_row = ttk.Frame(options_frame)
