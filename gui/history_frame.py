@@ -11,6 +11,8 @@ from ttkbootstrap.constants import *
 
 from core.utils import HistoryManager
 
+from .ui_compat import label_frame
+
 STATUS_LABELS = {
     "queued": "В очереди",
     "in_progress": "Скачивается",
@@ -49,7 +51,7 @@ class HistoryFrame:
             anchor=W,
         ).pack(fill=X, pady=(0, 12))
 
-        self.stats_frame = ttk.LabelFrame(main_container, text="Статистика", padding=10)
+        self.stats_frame = label_frame(main_container, "Статистика", 10)
         self.stats_frame.pack(fill=X, pady=(0, 12))
 
         self.stats_label = ttk.Label(
@@ -92,7 +94,7 @@ class HistoryFrame:
         search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=24)
         search_entry.pack(side=LEFT, padx=(5, 0))
 
-        history_frame = ttk.LabelFrame(main_container, text="Записи истории", padding=10)
+        history_frame = label_frame(main_container, "Записи истории", 10)
         history_frame.pack(fill=BOTH, expand=True)
 
         columns = ("date", "title", "type", "episodes", "quality", "status")

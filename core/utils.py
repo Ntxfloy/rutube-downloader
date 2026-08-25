@@ -20,6 +20,30 @@ APP_DIR_NAME = "RutubeDownloader"
 RUTUBE_HOSTS = ("rutube.ru", "www.rutube.ru", "m.rutube.ru")
 MAX_HISTORY_ENTRIES = 200
 
+DEFAULT_THEME = "darkly"
+# В ttkbootstrap нет тем "dark" и "light": с таким значением в config.json
+# приложение падало на старте: ('dark', 'is not a valid theme.').
+THEME_ALIASES = {
+    "dark": "darkly",
+    "light": "cosmo",
+    "default": DEFAULT_THEME,
+    "system": DEFAULT_THEME,
+    "none": DEFAULT_THEME,
+}
+
+
+def normalize_theme(name: Any) -> str:
+    """Приводит имя темы к виду, понятному ttkbootstrap.
+
+    Закрытого списка тем здесь специально нет: иначе валидные темы
+    (morph, litera, united и т.д.) сбрасывались бы на тему по умолчанию.
+    Фактическую доступность темы проверяет gui.ui_compat.resolve_theme().
+    """
+    theme = str(name or "").strip().lower()
+    if not theme:
+        return DEFAULT_THEME
+    return THEME_ALIASES.get(theme, theme)
+
 
 def get_app_data_dir() -> Path:
     """Возвращает каталог для настроек и истории.
@@ -116,7 +140,7 @@ class ConfigManager:
             "save_thumbnails": False,
             "save_subtitles": False,
             "show_success_popups": False,
-            "theme": "darkly",
+            "theme": DEFAULT_THEME,
             "window_size": [980, 720],
             "window_position": [100, 100],
             "ffmpeg_location": None,
@@ -142,7 +166,12 @@ class ConfigManager:
                 loaded = json.load(handle)
             if isinstance(loaded, dict):
                 self.config.update(loaded)
-            if source != self.config_path:
+            # Старые конфиги содержат theme="dark", которой в ttkbootstrap нет,
+            # и приложение падало ещё до появления окна.
+            normalized_theme = normalize_theme(self.config.get("theme"))
+            theme_changed = normalized_theme != self.config.get("theme")
+            self.config["theme"] = normalized_theme
+            if source != self.config_path or theme_changed:
                 self.save_config()
         except Exception as error:
             print(f"Ошибка при загрузке конфигурации: {error}")
@@ -164,6 +193,8 @@ class ConfigManager:
         return self.config.get(key, default)
 
     def set(self, key: str, value: Any, save: bool = True) -> None:
+        if key == "theme":
+            value = normalize_theme(value)
         with self._lock:
             if self.config.get(key) == value:
                 return
@@ -172,6 +203,9 @@ class ConfigManager:
             self.save_config()
 
     def update(self, values: Dict[str, Any], save: bool = True) -> None:
+        values = dict(values)
+        if "theme" in values:
+            values["theme"] = normalize_theme(values["theme"])
         with self._lock:
             self.config.update(values)
         if save:
