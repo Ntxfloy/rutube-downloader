@@ -8,7 +8,6 @@ from tkinter import filedialog, messagebox
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from ttkbootstrap.scrolled import ScrolledFrame
 
 from core.downloader import RutubeDownloader
 from core.parser import RutubeParser
@@ -21,7 +20,7 @@ from core.utils import (
     format_speed,
 )
 
-from .ui_compat import label_frame
+from .ui_compat import label_frame, scrolled_frame
 
 # Коды клавиш (Windows VK и X11 keycode) — нужны, чтобы Ctrl+V работал
 # при любой раскладке клавиатуры: при русской раскладке Tk присылает
@@ -63,9 +62,12 @@ class DownloadFrame:
     # ------------------------------------------------------------------ UI
     def _create_widgets(self):
         """Создает виджеты фрейма"""
-        scrolled = ScrolledFrame(self.frame, autohide=True)
-        scrolled.pack(fill=BOTH, expand=True)
-        main_container = scrolled
+        # scrolled_frame() вместо прямого ScrolledFrame: в ttkbootstrap 2.x модуля
+        # ttkbootstrap.scrolled больше нет, а ещё здесь включается ускоренное
+        # колёсико мыши (в 1.7 раза быстрее штатного).
+        self.scrolled = scrolled_frame(self.frame, autohide=True)
+        self.scrolled.pack(fill=BOTH, expand=True)
+        main_container = self.scrolled
 
         # --- Секция ввода URL -------------------------------------------
         # LabelFrame создаём через label_frame(): внутри ScrolledFrame опция
@@ -91,7 +93,7 @@ class DownloadFrame:
         self.context_menu.add_command(label="Копировать", command=self._copy_to_clipboard)
         self.context_menu.add_command(label="Вырезать", command=self._cut_to_clipboard)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Выделить всё", command=self._select_all)
+        self.context_menu.add_command(label="Выделить всщ1", command=self._select_all)
         self.context_menu.add_command(label="Очистить", command=self.clear_url)
 
         button_frame = ttk.Frame(url_frame)
