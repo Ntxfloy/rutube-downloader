@@ -65,6 +65,7 @@ Thumbs.db
 
 # PyInstaller build artifacts (временные файлы сборки)
 build_exe/build/
+build_exe/build_exe/
 build_exe/*.toc
 build_exe/*.pkg
 build_exe/*.pyz
