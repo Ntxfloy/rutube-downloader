@@ -1,0 +1,108 @@
+name: Release
+
+# Запускается тремя способами:
+#  1) push в ветку release (версия берётся из файла VERSION);
+#  2) push тега vX.Y.Z;
+#  3) вручную из Actions → Release → Run workflow.
+on:
+  push:
+    branches: [release]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия релиза без префикса v, например 1.0.0"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Сборка exe и публикация релиза
+    runs-on: windows-latest
+
+    steps:
+      - name: Клонирование
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Определить версию
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            version="${{ github.event.inputs.version }}"
+          elif [ -f VERSION ]; then
+            version="$(tr -d ' \r\n' < VERSION)"
+          else
+            version="0.0.0"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Версия релиза: $version"
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Проверка синтаксиса
+        run: python -m compileall -q core gui main.py
+
+      - name: Сборка exe
+        working-directory: build_exe
+        run: pyinstaller --noconfirm --clean RutubeDownloader.spec
+
+      - name: Подготовить артефакты
+        shell: bash
+        run: |
+          set -e
+          version="${{ steps.meta.outputs.version }}"
+          mkdir -p artifacts
+          # Сам исполняемый файл — отдельным ассетом, без архива
+          cp "dist/RutubeDownloader.exe" "artifacts/RutubeDownloader-$version.exe" 2>/dev/null \
+            || cp "build_exe/dist/RutubeDownloader.exe" "artifacts/RutubeDownloader-$version.exe"
+          # Исходники — отдельным zip без служебных файлов git
+          git archive --format=zip \
+            --prefix="rutube-downloader-$version/" \
+            -o "artifacts/rutube-downloader-$version-source.zip" HEAD
+          ls -lh artifacts
+
+      - name: Сохранить артефакты сборки
+        uses: actions/upload-artifact@v4
+        with:
+          name: RutubeDownloader-${{ steps.meta.outputs.version }}
+          path: artifacts/*
+          if-no-files-found: error
+
+      - name: Опубликовать релиз
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: RutubeDownloader ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ## Файлы релиза
+
+            | Файл | Для чего |
+            | --- | --- |
+            | `RutubeDownloader-${{ steps.meta.outputs.version }}.exe` | Готовая программа для Windows, установка не нужна — скачать и запустить |
+            | `rutube-downloader-${{ steps.meta.outputs.version }}-source.zip` | Исходный код отдельным архивом |
+
+            Для запуска из исходников: `pip install -r requirements.txt` и `python main.py`.
+            Для склеивания видео и звука нужен ffmpeg в PATH или указанный в настройках.
+          files: |
+            artifacts/*.exe
+            artifacts/*-source.zip
