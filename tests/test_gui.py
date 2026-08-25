@@ -3,6 +3,7 @@
 Запускаются в реальном Tk (в CI — под xvfb). Если дисплея нет, тесты пропускаются.
 """
 
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -138,7 +139,8 @@ class TestProgressUI:
         assert gui.frame.progress_var.get() == pytest.approx(42.5)
         assert gui.frame.overall_label.cget("text") == "50.0%"
         assert gui.frame.overall_var.get() == pytest.approx(50.0)
-        speed_text = gui.frame.percent_label.master.children and gui.frame.speed_label.cget("text")
+
+        speed_text = gui.frame.speed_label.cget("text")
         assert "1.0 MB/s" in speed_text
         assert "01:05" in speed_text
         assert "1/2" in gui.frame.queue_label.cget("text")
@@ -159,10 +161,8 @@ class TestProgressUI:
         gui.frame._apply_progress("complete", "Серия 1 скачана", {})
         assert gui.frame.percent_label.cget("text") == "100.0%"
 
-    def test_progress_callback_is_thread_safe(self, gui):
+    def test_callback_from_worker_thread_does_not_raise(self, gui):
         """Callback из рабочего потока не должен трогать Tk напрямую."""
-        import threading
-
         errors = []
 
         def worker():
@@ -178,6 +178,10 @@ class TestProgressUI:
         thread.join()
         assert errors == []
 
+    def test_callback_updates_ui_from_main_thread(self, gui):
+        gui.frame._on_download_progress(
+            {"episode": 1}, "progress", "Серия 1: 30.0%", {"percent": 30.0}
+        )
         gui.root.update()
         assert gui.frame.percent_label.cget("text") == "30.0%"
 
