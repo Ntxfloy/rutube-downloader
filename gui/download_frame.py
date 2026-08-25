@@ -21,6 +21,8 @@ from core.utils import (
     format_speed,
 )
 
+from .ui_compat import label_frame
+
 # Коды клавиш (Windows VK и X11 keycode) — нужны, чтобы Ctrl+V работал
 # при любой раскладке клавиатуры: при русской раскладке Tk присылает
 # keysym вида "Cyrillic_em", и бинд <Control-v> просто не срабатывает.
@@ -66,7 +68,9 @@ class DownloadFrame:
         main_container = scrolled
 
         # --- Секция ввода URL -------------------------------------------
-        url_frame = ttk.LabelFrame(main_container, text="Ссылка на видео или плейлист", padding=15)
+        # LabelFrame создаём через label_frame(): внутри ScrolledFrame опция
+        # padding в части версий ttkbootstrap даёт TclError и окно не открывается.
+        url_frame = label_frame(main_container, "Ссылка на видео или плейлист", 15)
         url_frame.pack(fill=X, padx=5, pady=(5, 15))
 
         self.url_var = tk.StringVar()
@@ -118,7 +122,7 @@ class DownloadFrame:
         self.clear_btn.pack(side=LEFT)
 
         # --- Информация о контенте -----------------------------------
-        self.info_frame = ttk.LabelFrame(main_container, text="Информация о контенте", padding=15)
+        self.info_frame = label_frame(main_container, "Информация о контенте", 15)
         self.info_frame.pack(fill=X, padx=5, pady=(0, 15))
 
         self.title_label = ttk.Label(
@@ -151,7 +155,7 @@ class DownloadFrame:
         self.details_label.pack(fill=X)
 
         # --- Настройки скачивания -------------------------------------
-        self.settings_frame = ttk.LabelFrame(main_container, text="Настройки скачивания", padding=15)
+        self.settings_frame = label_frame(main_container, "Настройки скачивания", 15)
         self.settings_frame.pack(fill=X, padx=5, pady=(0, 15))
 
         quality_frame = ttk.Frame(self.settings_frame)
@@ -237,7 +241,7 @@ class DownloadFrame:
         self.download_btn.pack(pady=(10, 0))
 
         # --- Прогресс -----------------------------------------------------
-        self.progress_frame = ttk.LabelFrame(main_container, text="Прогресс скачивания", padding=15)
+        self.progress_frame = label_frame(main_container, "Прогресс скачивания", 15)
         self.progress_frame.pack(fill=X, padx=5, pady=(0, 15))
         self.progress_frame.columnconfigure(0, weight=1)
 
