@@ -1,7 +1,8 @@
-"""Тесты старта приложения и совместимости LabelFrame.
+"""Тесты старта приложения и слоя совместимости UI.
 
-Регрессия на две ошибки, после которых окно вообще не открывалось:
-невалидная тема в config.json и опция padding у LabelFrame.
+Регрессия на ошибки, после которых окно вообще не открывалось:
+невалидная тема в config.json, опция padding у LabelFrame и исчезнувший
+в ttkbootstrap 2.x модуль ttkbootstrap.scrolled.
 """
 
 import json
@@ -11,8 +12,16 @@ import pytest
 tk = pytest.importorskip("tkinter")
 ttkb = pytest.importorskip("ttkbootstrap")
 
-from core.utils import DEFAULT_THEME, get_app_data_dir  # noqa: E402
-from gui.ui_compat import available_themes, label_frame, resolve_theme  # noqa: E402
+from core.scrolling import SCROLL_SPEED_FACTOR
+from core.utils import DEFAULT_THEME, get_app_data_dir
+from gui.ui_compat import (
+    available_themes,
+    boost_mousewheel,
+    find_scroll_canvas,
+    label_frame,
+    resolve_theme,
+    scrolled_frame,
+)
 
 
 def _skip_if_no_display(error):
@@ -57,11 +66,25 @@ class TestLabelFrameCompatibility:
 
     def test_label_frame_inside_scrolled_frame(self, root):
         """Именно здесь padding давал TclError: unknown option \"-padding\"."""
-        from ttkbootstrap.scrolled import ScrolledFrame
-
-        scrolled = ScrolledFrame(root, autohide=True)
+        scrolled = scrolled_frame(root)
         frame = label_frame(scrolled, "Тест", 15)
         assert frame.cget("text") == "Тест"
+
+
+class TestScrolledFrameCompatibility:
+    def test_scrolled_frame_works_on_any_ttkbootstrap(self, root):
+        """В ttkbootstrap 2.x импорт ttkbootstrap.scrolled падал с ImportError."""
+        scrolled = scrolled_frame(root)
+        scrolled.pack(fill="both", expand=True)
+        assert find_scroll_canvas(scrolled) is not None
+
+    def test_mousewheel_is_boosted(self, root):
+        scrolled = scrolled_frame(root)
+        accumulator = boost_mousewheel(scrolled)
+        assert accumulator is not None
+        assert accumulator.factor == SCROLL_SPEED_FACTOR
+        units = [accumulator.units(1) for _ in range(10)]
+        assert sum(units) == 17
 
 
 class TestMainWindowStartup:
